@@ -51,7 +51,24 @@ logger = logging.getLogger("datalake_monitoring")
 DEFAULT_THRESHOLD_HOURS = 168  # 1 hafta
 
 # Netbox ve Nutanix tablolarını karşılaştıran ana sorgu
+# CTE'ler ile her iki tabloda da name bazında deduplicate yapılır
 DETECTION_QUERY = """
+WITH netbox_unique AS (
+    SELECT DISTINCT ON (name)
+        id, name, site_name, cluster_name, status_value,
+        custom_fields_uuid, custom_fields_moid,
+        vcpus, memory, disk
+    FROM public.discovery_netbox_virtualization_vm
+    ORDER BY name, last_updated DESC NULLS LAST
+),
+nutanix_unique AS (
+    SELECT DISTINCT ON (name)
+        name, last_observed, status, status_description,
+        component_moid, nutanix_uuid, guest_os,
+        memory_mb, num_vcpus
+    FROM public.discovery_nutanix_inventory_vm
+    ORDER BY name, last_observed DESC NULLS LAST
+)
 SELECT
     nb.id                           AS netbox_vm_id,
     nb.name                         AS netbox_vm_name,
@@ -78,8 +95,8 @@ SELECT
         WHEN nut.name IS NULL THEN 'MISSING'
         WHEN nut.last_observed < NOW() - make_interval(hours => %(threshold_hours)s) THEN 'STALE'
     END                             AS finding_type
-FROM public.discovery_netbox_virtualization_vm nb
-LEFT JOIN public.discovery_nutanix_inventory_vm nut
+FROM netbox_unique nb
+LEFT JOIN nutanix_unique nut
     ON nb.name = nut.name
 WHERE (
     nut.name IS NULL
@@ -384,6 +401,7 @@ def main():
         logger.info("Veritabanı bağlantısı kapatıldı.")
 
     logger.info("İşlem tamamlandı.")
+    sys.stdout.flush()
 
 
 if __name__ == "__main__":

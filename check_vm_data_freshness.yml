@@ -54,6 +54,7 @@
           --threshold-hours {{ threshold_hours }}
           {% if dry_run | bool %}--dry-run{% endif %}
       environment:
+        PYTHONUNBUFFERED: "1"
         DB_HOST: "{{ lookup('env', 'DB_HOST') }}"
         DB_PORT: "{{ lookup('env', 'DB_PORT') | default('5432', true) }}"
         DB_NAME: "{{ lookup('env', 'DB_NAME') }}"
