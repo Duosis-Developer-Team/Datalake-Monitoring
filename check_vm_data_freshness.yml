@@ -1,0 +1,67 @@
+---
+# ============================================================
+# Datalake Monitoring - VM Veri Güncelliği Kontrolü
+# ============================================================
+# Bu playbook, check_vm_data_freshness.py scriptini çalıştırır.
+#
+# AWX Job Template ayarları:
+#   - Project       : Bu Git reposu
+#   - Playbook      : check_vm_data_freshness.yml
+#   - Inventory     : localhost veya DB inventory
+#   - Credentials   : Custom DB Credential (aşağıdaki env var'ları inject eder)
+#   - Extra Vars    : threshold_hours (opsiyonel, varsayılan 168)
+#
+# Gerekli Credential Env Variables:
+#   DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
+# ============================================================
+
+- name: "Datalake Monitoring - VM Veri Güncelliği Kontrolü"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    threshold_hours: 168
+    dry_run: false
+    script_path: "{{ playbook_dir }}/scripts/check_vm_data_freshness.py"
+
+  tasks:
+
+    - name: "Script dosyasının varlığını kontrol et"
+      ansible.builtin.stat:
+        path: "{{ script_path }}"
+      register: script_file
+
+    - name: "Script bulunamadı hatası"
+      ansible.builtin.fail:
+        msg: "Script bulunamadı: {{ script_path }}"
+      when: not script_file.stat.exists
+
+    - name: "DB bağlantı bilgilerini kontrol et"
+      ansible.builtin.fail:
+        msg: "Eksik ortam değişkeni: {{ item }}. AWX Credential yapılandırmasını kontrol edin."
+      when: lookup('env', item) == ''
+      loop:
+        - DB_HOST
+        - DB_NAME
+        - DB_USER
+        - DB_PASSWORD
+
+    - name: "VM veri güncelliği kontrolünü çalıştır"
+      ansible.builtin.command:
+        cmd: >
+          python3 {{ script_path }}
+          --threshold-hours {{ threshold_hours }}
+          {% if dry_run | bool %}--dry-run{% endif %}
+      environment:
+        DB_HOST: "{{ lookup('env', 'DB_HOST') }}"
+        DB_PORT: "{{ lookup('env', 'DB_PORT') | default('5432', true) }}"
+        DB_NAME: "{{ lookup('env', 'DB_NAME') }}"
+        DB_USER: "{{ lookup('env', 'DB_USER') }}"
+        DB_PASSWORD: "{{ lookup('env', 'DB_PASSWORD') }}"
+      register: check_result
+      changed_when: false
+
+    - name: "Kontrol çıktısını göster"
+      ansible.builtin.debug:
+        msg: "{{ check_result.stdout_lines }}"
