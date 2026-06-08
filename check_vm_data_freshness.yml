@@ -64,4 +64,4 @@
 
     - name: "Kontrol çıktısını göster"
       ansible.builtin.debug:
-        msg: "{{ check_result.stdout_lines }}"
+        msg: "{{ check_result.stdout_lines + check_result.stderr_lines }}"
