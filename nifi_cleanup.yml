@@ -1,0 +1,13 @@
+---
+- name: NiFi Disk Cleanup Flow
+  hosts: "{{ target_host }}"
+  become: yes
+  gather_facts: no
+  tasks:
+    - name: Execute NiFi Cleanup Script
+      ansible.builtin.command: /usr/local/sbin/nifi-disk-cleanup.sh
+      register: script_output
+
+    - name: Show Script Execution Logs
+      ansible.builtin.debug:
+        var: script_output.stdout_lines
