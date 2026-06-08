@@ -1,13 +1,24 @@
 ---
-- name: NiFi Disk Cleanup Flow
-  hosts: "{{ target_host }}"
+# 1. Aşama: Zabbix'ten gelen IP'yi anlık olarak hafızaya al
+- name: Zabbix'ten Gelen Hedefi Dinamik Envantere Ekle
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: IP adresini gecici_hedef grubuna kaydet
+      ansible.builtin.add_host:
+        name: "{{ target_host }}"
+        groups: gecici_hedef
+
+# 2. Aşama: Scripti sadece bu geçici hedefte çalıştır
+- name: NiFi Disk Cleanup Akisi
+  hosts: gecici_hedef
   become: yes
   gather_facts: no
   tasks:
-    - name: Execute NiFi Cleanup Script
+    - name: Cleanup Scriptini Calistir
       ansible.builtin.command: /usr/local/sbin/nifi-disk-cleanup.sh
       register: script_output
 
-    - name: Show Script Execution Logs
+    - name: Ciktiyi Ekrana Bas
       ansible.builtin.debug:
         var: script_output.stdout_lines
