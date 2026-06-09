@@ -51,24 +51,18 @@ logger = logging.getLogger("datalake_monitoring")
 DEFAULT_THRESHOLD_HOURS = 168  # 1 hafta
 
 # Netbox ve Nutanix tablolarını karşılaştıran ana sorgu
-# CTE'ler ile her iki tabloda da name bazında deduplicate yapılır
+# Netbox custom_fields_uuid = Nutanix component_moid ile UUID bazlı eşleştirme
+# Nutanix tablosunda component_moid UNIQUE olduğundan CTE gerekmez
 DETECTION_QUERY = """
 WITH netbox_unique AS (
-    SELECT DISTINCT ON (name)
+    SELECT DISTINCT ON (custom_fields_uuid)
         id, name, site_name, cluster_name, status_value,
         custom_fields_uuid, custom_fields_moid,
         vcpus, memory, disk
     FROM public.discovery_netbox_virtualization_vm
     WHERE tags1_display LIKE '%%Nutanix Acropolis%%'
-    ORDER BY name, last_updated DESC NULLS LAST
-),
-nutanix_unique AS (
-    SELECT DISTINCT ON (name)
-        name, last_observed, status, status_description,
-        component_moid, nutanix_uuid, guest_os,
-        memory_mb, num_vcpus
-    FROM public.discovery_nutanix_inventory_vm
-    ORDER BY name, last_observed DESC NULLS LAST
+      AND custom_fields_uuid IS NOT NULL
+    ORDER BY custom_fields_uuid, last_updated DESC NULLS LAST
 )
 SELECT
     nb.id                           AS netbox_vm_id,
@@ -93,18 +87,18 @@ SELECT
         EXTRACT(EPOCH FROM (NOW() - nut.last_observed)) / 3600, 2
     )                               AS data_age_hours,
     CASE
-        WHEN nut.name IS NULL THEN 'MISSING'
+        WHEN nut.component_moid IS NULL THEN 'MISSING'
         WHEN nut.last_observed < NOW() - make_interval(hours => %(threshold_hours)s) THEN 'STALE'
     END                             AS finding_type
 FROM netbox_unique nb
-LEFT JOIN nutanix_unique nut
-    ON nb.name = nut.name
+LEFT JOIN public.discovery_nutanix_inventory_vm nut
+    ON nb.custom_fields_uuid = nut.component_moid
 WHERE (
-    nut.name IS NULL
+    nut.component_moid IS NULL
     OR nut.last_observed < NOW() - make_interval(hours => %(threshold_hours)s)
 )
 ORDER BY
-    CASE WHEN nut.name IS NULL THEN 0 ELSE 1 END,
+    CASE WHEN nut.component_moid IS NULL THEN 0 ELSE 1 END,
     data_age_hours DESC NULLS FIRST;
 """
 
