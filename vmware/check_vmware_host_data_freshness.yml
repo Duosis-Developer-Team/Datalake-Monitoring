@@ -1,0 +1,71 @@
+---
+# ============================================================
+# Datalake Monitoring - VMware Host Veri Güncelliği Kontrolü
+# ============================================================
+# Bu playbook, check_vmware_host_data_freshness.py scriptini çalıştırır.
+#
+# AWX Job Template ayarları:
+#   - Project    : Bu Git reposu
+#   - Playbook   : vmware/check_vmware_host_data_freshness.yml
+#   - Inventory  : localhost
+#   - Credentials: Datalake DB Credential
+#   - Extra Vars : threshold_hours (opsiyonel, varsayılan 168)
+#
+# Filtre: tags1_display IN ('ESXI KLASIK HOST','ESXI KLASIK SAP HOST',
+#                           'ESXI NUTANIX','ESXI NUTANIX HOST',
+#                           'HYBRID','HYPER-V','KLASIK MIMARI')
+#         AND tenant_name = 'Bulutistan - Virtualization'
+# Eşleştirme: VMware → name bazlı, Nutanix → serial bazlı
+# ============================================================
+
+- name: "Datalake Monitoring - VMware Host Veri Güncelliği Kontrolü"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    threshold_hours: 168
+    dry_run: false
+    script_path: "{{ playbook_dir }}/scripts/check_vmware_host_data_freshness.py"
+
+  tasks:
+
+    - name: "Script dosyasının varlığını kontrol et"
+      ansible.builtin.stat:
+        path: "{{ script_path }}"
+      register: script_file
+
+    - name: "Script bulunamadı hatası"
+      ansible.builtin.fail:
+        msg: "Script bulunamadı: {{ script_path }}"
+      when: not script_file.stat.exists
+
+    - name: "DB bağlantı bilgilerini kontrol et"
+      ansible.builtin.fail:
+        msg: "Eksik ortam değişkeni: {{ item }}. AWX Credential yapılandırmasını kontrol edin."
+      when: lookup('env', item) == ''
+      loop:
+        - DB_HOST
+        - DB_NAME
+        - DB_USER
+        - DB_PASSWORD
+
+    - name: "VMware Host veri güncelliği kontrolünü çalıştır"
+      ansible.builtin.command:
+        cmd: >
+          python3 {{ script_path }}
+          --threshold-hours {{ threshold_hours }}
+          {% if dry_run | bool %}--dry-run{% endif %}
+      environment:
+        PYTHONUNBUFFERED: "1"
+        DB_HOST: "{{ lookup('env', 'DB_HOST') }}"
+        DB_PORT: "{{ lookup('env', 'DB_PORT') | default('5432', true) }}"
+        DB_NAME: "{{ lookup('env', 'DB_NAME') }}"
+        DB_USER: "{{ lookup('env', 'DB_USER') }}"
+        DB_PASSWORD: "{{ lookup('env', 'DB_PASSWORD') }}"
+      register: check_result
+      changed_when: false
+
+    - name: "Kontrol çıktısını göster"
+      ansible.builtin.debug:
+        msg: "{{ check_result.stdout_lines + check_result.stderr_lines }}"
