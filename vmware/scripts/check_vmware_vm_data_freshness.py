@@ -71,6 +71,7 @@ WITH netbox_unique AS (
     WHERE tags1_display LIKE '%%VMware%%'
       AND custom_fields_moid IS NOT NULL
       AND custom_fields_moid != ''
+      AND status_value != 'poweredOff'
     ORDER BY custom_fields_moid, last_updated DESC NULLS LAST
 )
 SELECT

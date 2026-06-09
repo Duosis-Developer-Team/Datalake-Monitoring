@@ -62,6 +62,7 @@ WITH netbox_unique AS (
     FROM public.discovery_netbox_virtualization_vm
     WHERE tags1_display LIKE '%%Nutanix Acropolis%%'
       AND custom_fields_uuid IS NOT NULL
+      AND status_value != 'poweredOff'
     ORDER BY custom_fields_uuid, last_updated DESC NULLS LAST
 )
 SELECT
