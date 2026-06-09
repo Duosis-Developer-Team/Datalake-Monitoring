@@ -135,7 +135,7 @@ class ZabbixAPI:
         return result.get("result")
 
     def login(self, user, password):
-        self.auth = self._call("user.login", {"user": user, "password": password})
+        self.auth = self._call("user.login", {"username": user, "password": password})
         logger.info("Zabbix API login başarılı.")
 
     def logout(self):
