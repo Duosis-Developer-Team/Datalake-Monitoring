@@ -1,0 +1,78 @@
+---
+# ============================================================
+# Datalake Monitoring - Tablo Veri Güncelliği (Zabbix)
+# ============================================================
+# Zabbix 7.0 API'den "last data" tag'li item'ları çekerek
+# datalake tablolarının son veri tarihlerini kontrol eder.
+#
+# AWX Job Template ayarları:
+#   - Project    : Bu Git reposu
+#   - Playbook   : zabbix/check_table_data_freshness.yml
+#   - Inventory  : localhost
+#   - Credentials: Datalake DB Credential + Zabbix Credential
+#   - Extra Vars : zabbix_host (opsiyonel, varsayılan: db-master)
+#
+# Gerekli Env Variables:
+#   DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
+#   ZABBIX_URL      : Zabbix frontend URL
+#   ZABBIX_USER     : Zabbix API kullanıcısı
+#   ZABBIX_PASSWORD : Zabbix API şifresi
+# ============================================================
+
+- name: "Datalake Monitoring - Tablo Veri Güncelliği (Zabbix)"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    zabbix_host: "db-master"
+    dry_run: false
+    script_path: "{{ playbook_dir }}/scripts/check_table_data_freshness.py"
+
+  tasks:
+
+    - name: "Script dosyasının varlığını kontrol et"
+      ansible.builtin.stat:
+        path: "{{ script_path }}"
+      register: script_file
+
+    - name: "Script bulunamadı hatası"
+      ansible.builtin.fail:
+        msg: "Script bulunamadı: {{ script_path }}"
+      when: not script_file.stat.exists
+
+    - name: "DB ve Zabbix bağlantı bilgilerini kontrol et"
+      ansible.builtin.fail:
+        msg: "Eksik ortam değişkeni: {{ item }}. AWX Credential yapılandırmasını kontrol edin."
+      when: lookup('env', item) == ''
+      loop:
+        - DB_HOST
+        - DB_NAME
+        - DB_USER
+        - DB_PASSWORD
+        - ZABBIX_URL
+        - ZABBIX_USER
+        - ZABBIX_PASSWORD
+
+    - name: "Tablo veri güncelliği kontrolünü çalıştır"
+      ansible.builtin.command:
+        cmd: >
+          python3 {{ script_path }}
+          --zabbix-host {{ zabbix_host }}
+          {% if dry_run | bool %}--dry-run{% endif %}
+      environment:
+        PYTHONUNBUFFERED: "1"
+        DB_HOST: "{{ lookup('env', 'DB_HOST') }}"
+        DB_PORT: "{{ lookup('env', 'DB_PORT') | default('5432', true) }}"
+        DB_NAME: "{{ lookup('env', 'DB_NAME') }}"
+        DB_USER: "{{ lookup('env', 'DB_USER') }}"
+        DB_PASSWORD: "{{ lookup('env', 'DB_PASSWORD') }}"
+        ZABBIX_URL: "{{ lookup('env', 'ZABBIX_URL') }}"
+        ZABBIX_USER: "{{ lookup('env', 'ZABBIX_USER') }}"
+        ZABBIX_PASSWORD: "{{ lookup('env', 'ZABBIX_PASSWORD') }}"
+      register: check_result
+      changed_when: false
+
+    - name: "Kontrol çıktısını göster"
+      ansible.builtin.debug:
+        msg: "{{ check_result.stdout_lines + check_result.stderr_lines }}"
