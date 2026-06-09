@@ -59,6 +59,7 @@ WITH netbox_unique AS (
         custom_fields_uuid, custom_fields_moid,
         vcpus, memory, disk
     FROM public.discovery_netbox_virtualization_vm
+    WHERE tags1_display LIKE '%%Nutanix Acropolis%%'
     ORDER BY name, last_updated DESC NULLS LAST
 ),
 nutanix_unique AS (
